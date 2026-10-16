@@ -60,51 +60,7 @@ class DistributionsPage(tk.Frame):
             hist_frame, ["id","f","amt","d"],
             ["#","Famille","Montant","Date"], [50,250,150,150], height=6)
         self.hc.pack(fill="both", expand=True)
-
-        # ── Suivi des bénéficiaires (2 listes remplies automatiquement) ─────
-        separator(wrap).pack(fill="x", padx=40, pady=(14, 4))
-        benef_top = tk.Frame(wrap, bg=TM.get_color("bg"))
-        benef_top.pack(fill="x", padx=40)
-        tk.Label(benef_top, text="Suivi des bénéficiaires | المستفيدين متابعة ",
-                 font=TM.FONTS["heading"], fg=TM.get_color("accent"),
-                 bg=TM.get_color("bg")).pack(side="left", pady=5)
-
-        benef_frame = tk.Frame(wrap, bg=TM.get_color("bg"))
-        benef_frame.pack(fill="both", expand=True, padx=40, pady=(4, 20))
-
-        # -- Liste 1 : familles ayant bénéficié (nb de fois + montant total) --
-        # (empilées l'une en dessous de l'autre plutôt que côte à côte)
-        top_list = tk.LabelFrame(benef_frame, text=" Familles bénéficiaires | العائلات المستفيدة ",
-                             font=TM.FONTS["body_b"], fg=TM.get_color("text"),
-                             bg=TM.get_color("bg"), padx=8, pady=8)
-        top_list.pack(side="top", fill="both", expand=True, pady=(0, 10))
-        self.benef_c, self.benef_tree = create_treeview(
-            top_list, ["name","count","total"],
-            ["Famille", "Nb. de fois", "Montant total"], [180, 90, 130], height=7)
-        self.benef_c.pack(fill="both", expand=True)
-
-        # -- Liste 2 : familles n'ayant jamais bénéficié --
-        bottom_list = tk.LabelFrame(benef_frame, text=" Familles jamais bénéficiaires | لم تستفد أبداً ",
-                              font=TM.FONTS["body_b"], fg=TM.get_color("text"),
-                              bg=TM.get_color("bg"), padx=8, pady=8)
-        bottom_list.pack(side="top", fill="both", expand=True)
-        self.nobenef_c, self.nobenef_tree = create_treeview(
-            bottom_list, ["name","phone","score"],
-            ["Famille", "Téléphone", "Score SVF"], [170, 110, 90], height=7)
-        self.nobenef_c.pack(fill="both", expand=True)
-
-    def _load_benef_summary(self):
-        for r in self.benef_tree.get_children():
-            self.benef_tree.delete(r)
-        for fid, name, count, total in db.get_families_with_distributions_summary():
-            self.benef_tree.insert("", "end", iid=f"b{fid}",
-                values=(name, count, f"{total:,.0f} DA"))
-
-        for r in self.nobenef_tree.get_children():
-            self.nobenef_tree.delete(r)
-        for fid, name, phone, score in db.get_families_without_distributions():
-            self.nobenef_tree.insert("", "end", iid=f"n{fid}",
-                values=(name, phone or "---", f"{(score or 0)}%"))
+        # (Le suivi des bénéficiaires a sa propre page : page_beneficiaries.py)
 
     def refresh(self):
         for r in self.hist_tree.get_children():
@@ -113,7 +69,6 @@ class DistributionsPage(tk.Frame):
             # r: (id, head_name, amount, distribution_type, distribution_date, notes)
             self.hist_tree.insert("", "end", iid=str(r[0]),
                                   values=(r[0], r[1], f"{r[2]:,.0f} DA", r[4]))
-        self._load_benef_summary()
 
     def _delete_distribution(self):
         sel = self.hist_tree.selection()

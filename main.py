@@ -7,6 +7,7 @@ from page_dashboard import DashboardPage
 from page_families import FamiliesPage
 from page_donations import DonationsPage
 from page_distributions import DistributionsPage
+from page_beneficiaries import BeneficiariesPage
 from page_settings import SettingsPage
 from page_mosque_expenses import MosqueExpensesPage
 from page_caisse import CaissePage
@@ -19,6 +20,7 @@ class CharityApp(tk.Tk):
         ("👨‍👩‍👧 Familles | العائلات",            "families"),
         ("💰 Dons | التبرعات",                 "donations"),
         ("📤 Distributions | توزيع المساعدات", "distributions"),
+        ("🤝 Bénéficiaires | المستفيدون",       "beneficiaries"),
         ("🧾 Journal de Caisse | سجل الصندوق", "caisse"),
         ("🕌 Dépenses Mosquée | مصاريف المسجد", "mosque_expenses"),
         ("📄 Rapports | التقارير",              "reports"),
@@ -147,6 +149,7 @@ class CharityApp(tk.Tk):
             "families":      FamiliesPage(self.content),
             "donations":     DonationsPage(self.content),
             "distributions": DistributionsPage(self.content),
+            "beneficiaries": BeneficiariesPage(self.content),
             "caisse":        CaissePage(self.content),
             "mosque_expenses": MosqueExpensesPage(self.content),
             "reports":       ReportsPage(self.content),
