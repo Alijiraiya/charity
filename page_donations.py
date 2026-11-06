@@ -58,8 +58,8 @@ class DonationsPage(tk.Frame):
         dform.pack(side="bottom", fill="x", pady=4)
         f, self.v_dname,  _ = entry_row(dform, "Nom | الاسم :"); f.pack(fill="x", pady=2)
         f, self.v_dphone, _ = entry_row(dform, "Tél | الهاتف :"); f.pack(fill="x", pady=2)
-        f, self.v_dage,   _ = entry_row(dform, "Âge | السن :", width=6); f.pack(fill="x", pady=2)
-        self.v_dage.set("0")
+        f, self.v_dage,   _ = entry_row(dform, "Âge (optionnel) | السن :", width=6); f.pack(fill="x", pady=2)
+        # L'âge est facultatif : on le laisse vide par défaut (enregistré 0 = non renseigné).
         tk.Button(dform, text="＋ Enregistrer Donateur", font=TM.FONTS["small"],
                   bg=TM.get_color("card"), fg=TM.get_color("text"),
                   command=self._add_donor).pack(fill="x", pady=4)
@@ -143,6 +143,16 @@ class DonationsPage(tk.Frame):
 
         f, self.v_notes, _ = entry_row(right, "Notes / Description :"); f.pack(fill="x", pady=3)
 
+        # Don anonyme : aucun donateur n'est rattaché au don (pas besoin d'en sélectionner un)
+        self.v_anonymous = tk.BooleanVar(value=False)
+        tk.Checkbutton(right, text="🕶 Don anonyme | تبرع مجهول  (aucun donateur nécessaire)",
+                       variable=self.v_anonymous, font=TM.FONTS["body"],
+                       bg=TM.get_color("bg"), fg=TM.get_color("text"),
+                       selectcolor=TM.get_color("card"),
+                       activebackground=TM.get_color("bg"),
+                       activeforeground=TM.get_color("text"),
+                       anchor="w").pack(fill="x", pady=(6, 0))
+
         tk.Button(right, text="📥 Valider l'entrée du Don", font=TM.FONTS["body_b"],
                   bg=TM.get_color("accent"), fg="#ffffff", command=self._add_donation,
                   height=2).pack(fill="x", pady=15)
@@ -199,7 +209,8 @@ class DonationsPage(tk.Frame):
         for row in db.get_all_donors():
             # row: (id, name, phone, age)
             self.donor_tree.insert("", "end", iid=str(row[0]),
-                                   values=(row[0], row[1], row[2], row[3]))
+                                   values=(row[0], row[1], row[2] or "---",
+                                           row[3] if row[3] else "—"))
 
         for tree in self.category_trees.values():
             for r in tree.get_children():
@@ -229,12 +240,17 @@ class DonationsPage(tk.Frame):
         name = self.v_dname.get().strip()
         if not name:
             return messagebox.showerror("Erreur", "Nom obligatoire.")
-        try:
-            age = int(self.v_dage.get() or 0)
-        except ValueError:
-            return messagebox.showerror("Erreur", "L'âge doit être un entier.")
+        age_txt = self.v_dage.get().strip()
+        if age_txt:
+            try:
+                age = int(age_txt)
+                if age < 0: raise ValueError
+            except ValueError:
+                return messagebox.showerror("Erreur", "L'âge doit être un nombre entier (ou laissez vide).")
+        else:
+            age = 0   # âge non renseigné : facultatif
         db.add_donor(name, self.v_dphone.get().strip(), "", age)
-        self.v_dname.set(""); self.v_dphone.set(""); self.v_dage.set("0")
+        self.v_dname.set(""); self.v_dphone.set(""); self.v_dage.set("")
         self.load_data()
 
     def _delete_donor(self):
@@ -247,9 +263,16 @@ class DonationsPage(tk.Frame):
             self.load_data()
 
     def _add_donation(self):
-        sel = self.donor_tree.selection()
-        if not sel:
-            return messagebox.showwarning("Attention", "Sélectionnez un donateur.")
+        anonymous = self.v_anonymous.get()
+        if anonymous:
+            donor_id = None            # don anonyme : aucun donateur rattaché
+        else:
+            sel = self.donor_tree.selection()
+            if not sel:
+                return messagebox.showwarning(
+                    "Attention",
+                    "Sélectionnez un donateur, ou cochez « Don anonyme ».")
+            donor_id = int(sel[0])
 
         is_nature = self.cb_category.get().startswith("Nature")
         notes = self.v_notes.get().strip()
@@ -260,7 +283,7 @@ class DonationsPage(tk.Frame):
                 if amt <= 0: raise ValueError
             except ValueError:
                 return messagebox.showerror("Erreur", "Montant valide requis (> 0).")
-            db.add_donation(int(sel[0]), amt, self.cb_type.get(), notes,
+            db.add_donation(donor_id, amt, self.cb_type.get(), notes,
                             category="Espèce")
             self.v_amount.set("0")
         else:
@@ -276,13 +299,15 @@ class DonationsPage(tk.Frame):
                 est_value = float(self.v_est_value.get() or 0)
             except ValueError:
                 est_value = 0
-            db.add_donation(int(sel[0]), est_value, self.cb_type_nature.get(), notes,
+            db.add_donation(donor_id, est_value, self.cb_type_nature.get(), notes,
                             category="Nature", item_name=item_name, quantity=qty,
                             unit=self.cb_unit.get())
             self.v_item_name.set(""); self.v_quantity.set("1"); self.v_est_value.set("0")
 
         self.v_notes.set("")
-        messagebox.showinfo("Succès", "Don enregistré avec succès.")
+        self.v_anonymous.set(False)
+        messagebox.showinfo("Succès", "Don anonyme enregistré avec succès." if anonymous
+                            else "Don enregistré avec succès.")
         self.load_data()
 
     def _delete_donation(self, key):

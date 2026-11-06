@@ -395,6 +395,46 @@ def initialize_database():
     # d'anciennes versions de l'appli, conservés en fin de table).
     _normalize_family_table()
     _normalize_child_table()
+    _allow_anonymous_donations()
+
+
+def _allow_anonymous_donations():
+    """Rend `donation.donor_id` FACULTATIF (NULL = don anonyme).
+
+    Les anciennes bases ont `donor_id INTEGER NOT NULL`, ce qui interdit
+    d'enregistrer un don sans donateur. SQLite ne sait pas retirer un NOT NULL
+    avec ALTER TABLE : on reconstruit donc la table, en recopiant tous les dons
+    existants à l'identique, dans UNE seule transaction (tout ou rien).
+    Ne fait rien si la colonne est déjà facultative."""
+    conn = connect()
+    try:
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(donation)")
+        info = {r[1]: r for r in c.fetchall()}      # nom -> (cid, name, type, notnull, ...)
+        if "donor_id" not in info or not info["donor_id"][3]:
+            return  # déjà facultatif (ou table absente) : rien à faire
+        cols = ["id", "donor_id", "amount", "donation_type", "donation_date",
+                "notes", "category", "item_name", "quantity", "unit"]
+        c.execute("BEGIN")
+        c.execute("DROP TABLE IF EXISTS donation_new")   # reste d'une tentative interrompue
+        c.execute("""CREATE TABLE donation_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            donor_id INTEGER, amount REAL DEFAULT 0, donation_type TEXT DEFAULT 'Cash',
+            donation_date TEXT NOT NULL, notes TEXT DEFAULT '',
+            category TEXT DEFAULT 'Espèce', item_name TEXT DEFAULT '', quantity REAL DEFAULT 0,
+            unit TEXT DEFAULT 'unité(s)',
+            FOREIGN KEY(donor_id) REFERENCES donor(id)
+        )""")
+        c.execute(f"INSERT INTO donation_new ({', '.join(cols)}) "
+                  f"SELECT {', '.join(cols)} FROM donation")
+        c.execute("DROP TABLE donation")
+        c.execute("ALTER TABLE donation_new RENAME TO donation")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _normalize_family_table():
@@ -808,21 +848,25 @@ def delete_donor(did):
     execute_query("UPDATE donor SET is_active=0 WHERE id=?", (did,))
 
 # ── DONS ──────────────────────────────────────────────────────────────────────
+ANONYMOUS_DONOR_LABEL = "Anonyme | مجهول"
+
 def get_all_donations():
-    """→ (id, donor_name, amount, donation_type, donation_date, notes, category, item_name, quantity, unit)"""
+    """→ (id, donor_name, amount, donation_type, donation_date, notes, category, item_name, quantity, unit)
+    Un don anonyme (donor_id NULL) ressort avec le nom « Anonyme | مجهول »."""
     return fetch_all("""
-        SELECT d.id, dn.name, d.amount, d.donation_type, d.donation_date, d.notes,
+        SELECT d.id, COALESCE(dn.name, ?), d.amount, d.donation_type, d.donation_date, d.notes,
                d.category, d.item_name, d.quantity, d.unit
-        FROM donation d JOIN donor dn ON d.donor_id = dn.id
+        FROM donation d LEFT JOIN donor dn ON d.donor_id = dn.id
         ORDER BY d.donation_date DESC
-    """)
+    """, (ANONYMOUS_DONOR_LABEL,))
 
 def add_donation(donor_id, amount, donation_type, notes="", category="Espèce",
                   item_name="", quantity=0, unit="unité(s)"):
     """category : 'Espèce' (don en argent) ou 'Nature' (don en objets : cartables,
     vêtements, nourriture, matériel scolaire, etc.). Pour un don en nature,
     `amount` est optionnel (valeur estimée, peut être 0) et `item_name`/`quantity`/`unit`
-    décrivent les objets donnés (ex: 5 kg de Riz, 10 unité(s) de Cartables)."""
+    décrivent les objets donnés (ex: 5 kg de Riz, 10 unité(s) de Cartables).
+    donor_id=None enregistre un DON ANONYME (aucun donateur rattaché)."""
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     execute_query(
         """INSERT INTO donation (donor_id, amount, donation_type, donation_date,
@@ -1462,9 +1506,10 @@ def get_caisse_journal(date_from=None, date_to=None, search=""):
     rows = []
     for date, name, amount, dtype in fetch_all(
             """SELECT d.donation_date, dn.name, d.amount, d.donation_type
-               FROM donation d JOIN donor dn ON d.donor_id = dn.id
+               FROM donation d LEFT JOIN donor dn ON d.donor_id = dn.id
                WHERE d.category='Espèce'"""):
-        rows.append((date, f"Don de {name} ({dtype})", amount or 0.0, 0.0, "don"))
+        libelle = f"Don de {name} ({dtype})" if name else f"Don anonyme ({dtype})"
+        rows.append((date, libelle, amount or 0.0, 0.0, "don"))
     for date, name, amount in fetch_all(
             """SELECT dist.distribution_date, f.head_name, dist.amount
                FROM distribution dist JOIN family f ON dist.family_id = f.id"""):
